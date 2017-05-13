@@ -5,15 +5,26 @@
  */
 package util;
 
+import implementation.MyCode;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.security.GeneralSecurityException;
 import java.security.KeyPair;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
+import java.security.Security;
+import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.security.auth.x500.X500Principal;
 import model.UIParameters;
 import org.bouncycastle.asn1.x509.BasicConstraints;
@@ -22,6 +33,7 @@ import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.GeneralNames;
 import org.bouncycastle.asn1.x509.X509Extensions;
 import org.bouncycastle.jce.X509KeyUsage;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.x509.X509V3CertificateGenerator;
 
 
@@ -36,7 +48,43 @@ public class X509Utils {
   private static String keyStoreFileName = "keystore";
   
   public X509Utils() throws Exception {
+    Security.addProvider(new BouncyCastleProvider());
     keyStore = KeyStore.getInstance("BKS", "BC");
+  }
+  
+  public KeyStore loadKeyStore() {
+    try {
+      keyStore = X509Utils.getInstance().getKeyStore();
+    } catch (Exception ex) {
+      Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
+      return null;
+    }
+    
+    try {
+      InputStream readStream = new FileInputStream(X509Utils.getKeyStoreFileName());
+      keyStore.load(readStream, X509Utils.getKeyStorePassword().toCharArray());
+      readStream.close();
+    } catch (Exception ex) {
+      try {
+        keyStore.load(null,null);
+      } catch (Exception ex1) {
+        Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex1);
+      }
+      Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
+    }
+    
+    return keyStore;
+  }
+  
+  public void storeKeyStore() {
+    OutputStream writeStream;
+    try {
+      writeStream = new FileOutputStream(keyStoreFileName);
+      keyStore.store(writeStream, keyStorePassword.toCharArray());
+      writeStream.close();
+    } catch (Exception ex) {
+      Logger.getLogger(X509Utils.class.getName()).log(Level.SEVERE, null, ex);
+    }
   }
   
   public X509Certificate generateCertificate(UIParameters uiParams, KeyPair pair) throws GeneralSecurityException, IOException, Exception {

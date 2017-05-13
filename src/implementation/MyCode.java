@@ -8,9 +8,11 @@ import code.GuiException;
 import gui.KeyStorePanel;
 import gui.ToolbarPanel;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigInteger;
 import java.security.GeneralSecurityException;
 import java.security.KeyPair;
@@ -63,7 +65,6 @@ public class MyCode extends CodeV3 {
   
   public MyCode(boolean[] algorithm_conf, boolean[] extensions_conf) throws GuiException {
     super(algorithm_conf, extensions_conf);
-    Security.addProvider(new BouncyCastleProvider());
   }
   
   public GuiV3 getAccess() {
@@ -72,9 +73,12 @@ public class MyCode extends CodeV3 {
 
   @Override
   public Enumeration<String> loadLocalKeystore() {
-    
-    
-    
+    try {
+      KeyStore ks = X509Utils.getInstance().loadKeyStore();
+      return ks.aliases();
+    } catch (Exception ex) {
+      Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
+    }
     return null;
   }
 
@@ -121,7 +125,9 @@ public class MyCode extends CodeV3 {
       keyGen = KeyPairGenerator.getInstance("DSA");
       keyPair = keyGen.generateKeyPair();
       X509Certificate cert = X509Utils.getInstance().generateCertificate(uiParams, keyPair);
-      System.out.println(cert.getIssuerDN().toString());
+      Certificate certs [] = {cert};
+      X509Utils.getInstance().getKeyStore().setKeyEntry(name, keyPair.getPrivate().getEncoded(), certs);
+      X509Utils.getInstance().storeKeyStore();
     } catch (IOException ex) {
       Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
     } catch (Exception ex) {
