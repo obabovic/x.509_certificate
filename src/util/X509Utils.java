@@ -27,15 +27,17 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.security.auth.x500.X500Principal;
 import model.UIParameters;
+import org.bouncycastle.asn1.x509.AuthorityKeyIdentifier;
 import org.bouncycastle.asn1.x509.BasicConstraints;
 import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.GeneralNames;
+import org.bouncycastle.asn1.x509.SubjectKeyIdentifier;
 import org.bouncycastle.asn1.x509.X509Extensions;
+import static org.bouncycastle.asn1.x509.X509Extensions.SubjectKeyIdentifier;
 import org.bouncycastle.jce.X509KeyUsage;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.x509.X509V3CertificateGenerator;
-
 
 /**
  *
@@ -101,10 +103,23 @@ public class X509Utils {
     certGen.setSignatureAlgorithm(uiParams.getSignatureAlgorithm());
     
     //adding extensions
-    //Key usage
+    //key ids
     if(uiParams.isExtensionKeyIdentifier()) {
-      X509KeyUsage keyuse = new X509KeyUsage(X509KeyUsage.dataEncipherment | X509KeyUsage.nonRepudiation);
-      certGen.addExtension(X509Extensions.KeyUsage, uiParams.isExtensionKeyIdentifierIsCritical(), keyuse);
+      
+      //converting a string into valid format for authorityKeyIdentifier
+      List<GeneralName> names = new ArrayList();
+      GeneralName altName = new GeneralName(GeneralName.dNSName, uiParams.getCommonName());
+      names.add(altName);
+      GeneralName [] listToArray = new GeneralName[names.size()];
+      names.toArray(listToArray);
+      GeneralNames authorityName = new GeneralNames(listToArray);
+      
+      SubjectKeyIdentifier sKID = new SubjectKeyIdentifier(pair.getPublic().getEncoded());
+      AuthorityKeyIdentifier aKID = new AuthorityKeyIdentifier(authorityName, uiParams.getSerialNumber());
+      
+      //sKID and aKID must not be critical, from documentation
+      certGen.addExtension(Extension.subjectKeyIdentifier, false, sKID);
+      certGen.addExtension(Extension.authorityKeyIdentifier, false, aKID);
     }
     
     //Alternative names
@@ -117,7 +132,7 @@ public class X509Utils {
       GeneralName [] listToArray = new GeneralName[names.size()];
       names.toArray(listToArray);
       GeneralNames subjectAltName = new GeneralNames(listToArray);
-      certGen.addExtension(X509Extensions.SubjectAlternativeName, uiParams.isExtensionSubjectAlternativeNameIsCritical(), subjectAltName); 
+      certGen.addExtension(Extension.subjectAlternativeName, uiParams.isExtensionSubjectAlternativeNameIsCritical(), subjectAltName); 
     }
     
     

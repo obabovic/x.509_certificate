@@ -7,6 +7,7 @@ package implementation;
 import code.GuiException;
 import gui.KeyStorePanel;
 import gui.ToolbarPanel;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -22,6 +23,7 @@ import java.security.KeyStore.Entry;
 import java.security.KeyStore.PrivateKeyEntry;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
+import java.security.Principal;
 import java.security.PrivateKey;
 import java.security.SecureRandom;
 import java.security.Security;
@@ -31,14 +33,35 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.naming.InvalidNameException;
+import javax.naming.ldap.LdapName;
+import javax.naming.ldap.Rdn;
 import model.UIParameters;
+import org.bouncycastle.asn1.ASN1InputStream;
+import org.bouncycastle.asn1.ASN1Primitive;
+import org.bouncycastle.asn1.ASN1Sequence;
+import org.bouncycastle.asn1.DEROctetString;
+import org.bouncycastle.asn1.x509.AuthorityKeyIdentifier;
+import org.bouncycastle.asn1.x509.BasicConstraints;
+import org.bouncycastle.asn1.x509.Extension;
+import org.bouncycastle.asn1.x509.GeneralName;
+import org.bouncycastle.asn1.x509.GeneralNames;
+import org.bouncycastle.asn1.x509.SubjectKeyIdentifier;
+import org.bouncycastle.asn1.x509.X509Extension;
+import org.bouncycastle.asn1.x509.X509Extensions;
+import static org.bouncycastle.asn1.x509.X509Extensions.SubjectAlternativeName;
+import static org.bouncycastle.asn1.x509.X509Extensions.SubjectKeyIdentifier;
+import org.bouncycastle.jce.X509KeyUsage;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import sun.security.pkcs.EncryptedPrivateKeyInfo;
 import sun.security.x509.AlgorithmId;
@@ -52,6 +75,7 @@ import sun.security.x509.CertificateX509Key;
 import sun.security.x509.X500Name;
 import sun.security.x509.X509CertImpl;
 import sun.security.x509.X509CertInfo;
+import util.UIUtils;
 import util.X509Utils;
 import x509.v3.CodeV3;
 import x509.v3.GuiV3;
@@ -95,44 +119,33 @@ public class MyCode extends CodeV3 {
 
   @Override
   public int loadKeypair(String string) {
-    return 0;
+    int result = -1;
+    
+    try {
+      Certificate[] certs = X509Utils.getInstance().getKeyStore().getCertificateChain(string);
+      X509Certificate cert = (X509Certificate) certs[0];
+      
+      result = UIUtils.mapCertificateToUI(access, cert);
+      
+    } catch (Exception ex) {
+      Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
+    }
+    return result;
   }
-
+  
   @Override
   public boolean saveKeypair(String string) {
     boolean res = true;
     
-    String name = string;
-    String subjectCountry = access.getSubjectCountry();
-    String subjectState = access.getSubjectState();
-    String subjectLocality = access.getSubjectLocality();
-    String subjectOrganization = access.getSubjectOrganization();
-    String subjectOrganizationUnit = access.getSubjectOrganizationUnit();
-    String subjectCommonName = access.getSubjectCommonName();
-    String subjectSignatureAlgorithm = access.getPublicKeySignatureAlgorithm();
-    int subjectCertificateVersion = access.getVersion();
-    BigInteger subjectSerialNumber = new BigInteger(access.getSerialNumber());
-    Date notBefore = access.getNotBefore();
-    Date notAfter = access.getNotAfter();
-    String keyLength = access.getPublicKeyParameter();
-    String publicKeyAlgorithm = access.getPublicKeyAlgorithm();
-    boolean extensionKeyIdentifier = access.getEnabledKeyIdentifiers();
-    String[] extensionsubjectAlternativeName = access.getAlternativeName(5);
-    String pathLength = access.getPathLen();
-    boolean extensionKeyIdentifierIsCritical = access.isCritical(0);
-    boolean extensionSubjectAlternativeNameIsCritical = access.isCritical(5);
-    boolean extensionBasicConstraintsIsCritical = access.isCritical(8);
-    boolean extensionIsCertificateAuthority = access.isCA();
-    
-    
-    UIParameters uiParams = new UIParameters(name,subjectCountry,subjectState,subjectLocality,subjectOrganization,subjectOrganizationUnit,subjectCommonName,subjectSignatureAlgorithm, subjectCertificateVersion,subjectSerialNumber,notBefore,notAfter, keyLength, publicKeyAlgorithm, extensionKeyIdentifier,extensionsubjectAlternativeName, pathLength, extensionKeyIdentifierIsCritical, extensionSubjectAlternativeNameIsCritical, extensionBasicConstraintsIsCritical, extensionIsCertificateAuthority);
+    UIParameters uiParams = UIUtils.mapUIToModel(access, string);
     
     try {
       keyGen = KeyPairGenerator.getInstance("DSA");
+      keyGen.initialize(Integer.parseInt(uiParams.getKeyLength()));
       keyPair = keyGen.generateKeyPair();
       X509Certificate cert = X509Utils.getInstance().generateCertificate(uiParams, keyPair);
       Certificate certs [] = {cert};
-      X509Utils.getInstance().getKeyStore().setKeyEntry(name, keyPair.getPrivate().getEncoded(), certs);
+      X509Utils.getInstance().getKeyStore().setKeyEntry(uiParams.getName(), keyPair.getPrivate().getEncoded(), certs);
       X509Utils.getInstance().storeKeyStore();
     } catch (IOException ex) {
       Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
