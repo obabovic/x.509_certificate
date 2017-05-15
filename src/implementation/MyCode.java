@@ -84,7 +84,13 @@ public class MyCode extends CodeV3 {
 
   @Override
   public void resetLocalKeystore() {
-    
+    try {
+      X509Utils.getInstance().getKeyStore().load(null,null);
+      File keyStoreFile = new File(X509Utils.getKeyStoreFileName());
+      keyStoreFile.delete();
+    } catch (Exception ex) {
+      Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
+    }
   }
 
   @Override
