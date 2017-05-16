@@ -22,6 +22,7 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.KeyStore.Entry;
+import java.security.KeyStore.PasswordProtection;
 import java.security.KeyStore.PrivateKeyEntry;
 import java.security.KeyStore.ProtectionParameter;
 import java.security.KeyStoreException;
@@ -66,8 +67,11 @@ import org.bouncycastle.asn1.x509.X509Extensions;
 import static org.bouncycastle.asn1.x509.X509Extensions.SubjectAlternativeName;
 import static org.bouncycastle.asn1.x509.X509Extensions.SubjectKeyIdentifier;
 import org.bouncycastle.jcajce.provider.asymmetric.x509.KeyFactory;
+import org.bouncycastle.jce.PKCS10CertificationRequest;
 import org.bouncycastle.jce.X509KeyUsage;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.util.encoders.Base64;
+import org.bouncycastle.x509.X509V3CertificateGenerator;
 import sun.security.pkcs.EncryptedPrivateKeyInfo;
 import sun.security.x509.AlgorithmId;
 import sun.security.x509.CertificateAlgorithmId;
@@ -91,6 +95,7 @@ import x509.v3.GuiV3;
 public class MyCode extends CodeV3 {
   private KeyPairGenerator keyGen;
   private KeyPair keyPair;
+  private String selectedKeyPair = null;
   
   public MyCode(boolean[] algorithm_conf, boolean[] extensions_conf) throws GuiException {
     super(algorithm_conf, extensions_conf);
@@ -128,10 +133,18 @@ public class MyCode extends CodeV3 {
     
     try {
       Certificate[] certs = X509Utils.getInstance().getKeyStore().getCertificateChain(string);
-      X509Certificate cert = (X509Certificate) certs[0];
+      X509Certificate cert;
+      
+      if(certs == null) {
+        cert = (X509Certificate) X509Utils.getInstance().getKeyStore().getCertificate(string);
+      } else {
+        cert = (X509Certificate) certs[0];
+      }
       
       result = UIUtils.mapCertificateToUI(access, cert);
-      
+      if(result!=-1) {
+        selectedKeyPair = string;
+      }
     } catch (Exception ex) {
       Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
     }
@@ -148,7 +161,7 @@ public class MyCode extends CodeV3 {
       keyGen = KeyPairGenerator.getInstance("DSA");
       keyGen.initialize(Integer.parseInt(uiParams.getKeyLength()));
       keyPair = keyGen.generateKeyPair();
-      X509Certificate cert = X509Utils.getInstance().generateCertificate(uiParams, keyPair);
+      X509Certificate cert = X509Utils.getInstance().generateCertificate(uiParams, keyPair.getPublic(), keyPair.getPrivate());
       Certificate certs [] = {cert};
       
       X509Utils.getInstance().getKeyStore().setKeyEntry(uiParams.getName(), keyPair.getPrivate(), X509Utils.getKeyStorePassword().toCharArray(), certs);
@@ -232,9 +245,28 @@ public class MyCode extends CodeV3 {
     return result;
   }
 
+  //string issuer, string algorithm
   @Override
   public boolean signCertificate(String string, String string1) {
-    return true;
+    boolean result = false;
+    
+    ProtectionParameter pp = new PasswordProtection(X509Utils.getKeyStorePassword().toCharArray());
+    try {
+      
+      PrivateKeyEntry issuerEntry = (PrivateKeyEntry) X509Utils.getInstance().getKeyStore().getEntry(string, pp);
+      PrivateKeyEntry subjectEntry = (PrivateKeyEntry) X509Utils.getInstance().getKeyStore().getEntry(selectedKeyPair, pp);
+      
+      X509Certificate cert = X509Utils.signCertificate(subjectEntry, issuerEntry);
+      X509Utils.getInstance().getKeyStore().deleteEntry(selectedKeyPair);
+      X509Utils.getInstance().getKeyStore().setCertificateEntry(selectedKeyPair, cert);
+      X509Utils.getInstance().storeKeyStore();
+      
+      result = true;
+    } catch (Exception ex) {
+      Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
+    }
+    
+    return result;
   }
 
   @Override
@@ -249,12 +281,19 @@ public class MyCode extends CodeV3 {
 
   @Override
   public String getIssuer(String string) {
-    return null;
+    return "blabla";
   }
 
   @Override
   public String getIssuerPublicKeyAlgorithm(String string) {
-    return null;
+    String result = null;
+    try {
+      X509Certificate cert = (X509Certificate) X509Utils.getInstance().getKeyStore().getCertificate(string);
+      result = cert.getSigAlgName();
+    } catch (Exception ex) {
+      Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
+    }
+    return result;
   }
 
   @Override
@@ -264,12 +303,49 @@ public class MyCode extends CodeV3 {
 
   @Override
   public List<String> getIssuers(String string) {
-    return null;
+    List<String> result = new ArrayList();
+    Enumeration<String> aliases;
+    try {
+      aliases = X509Utils.getInstance().getKeyStore().aliases();
+      while (aliases.hasMoreElements()) {
+          String alias = aliases.nextElement();
+          if(alias.compareTo(string) == 0)
+            continue;
+          X509Certificate cert = (X509Certificate) X509Utils.getInstance().getKeyStore().getCertificate(alias);
+          if(cert.getBasicConstraints() >= 0) {
+            result.add(alias);
+          }
+      }
+      
+    } catch (Exception ex) {
+      Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
+    }
+    if(result.isEmpty())
+      result=null;
+    return result;
   }
 
+  //String keypair_name
   @Override
   public boolean generateCSR(String string) {
-    return true;
+    boolean result = false;
+    
+    try {
+      if(X509Utils.getInstance().getKeyStore().containsAlias(string)) {
+        ProtectionParameter pp = new PasswordProtection(X509Utils.getKeyStorePassword().toCharArray());
+        PrivateKeyEntry entry = (PrivateKeyEntry) X509Utils.getInstance().getKeyStore().getEntry(string, pp);
+        X509Certificate cert = (X509Certificate) entry.getCertificate();
+        PrivateKey pKey = entry.getPrivateKey();
+        PKCS10CertificationRequest pkcs10Request = new PKCS10CertificationRequest("SHA1withDSA",cert.getSubjectX500Principal(),cert.getPublicKey(), null, pKey);
+        
+        String base64PKCS10 = new String(Base64.encode(pkcs10Request.getEncoded()));
+        result = true;
+      }
+    } catch (Exception ex) {
+      Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
+    }
+    
+    return result;
   }
   
 }
