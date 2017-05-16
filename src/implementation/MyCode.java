@@ -14,13 +14,16 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.math.BigInteger;
 import java.security.GeneralSecurityException;
+import java.security.Key;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.KeyStore.Entry;
 import java.security.KeyStore.PrivateKeyEntry;
+import java.security.KeyStore.ProtectionParameter;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.Principal;
@@ -31,6 +34,7 @@ import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -61,6 +65,7 @@ import org.bouncycastle.asn1.x509.X509Extension;
 import org.bouncycastle.asn1.x509.X509Extensions;
 import static org.bouncycastle.asn1.x509.X509Extensions.SubjectAlternativeName;
 import static org.bouncycastle.asn1.x509.X509Extensions.SubjectKeyIdentifier;
+import org.bouncycastle.jcajce.provider.asymmetric.x509.KeyFactory;
 import org.bouncycastle.jce.X509KeyUsage;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import sun.security.pkcs.EncryptedPrivateKeyInfo;
@@ -145,7 +150,8 @@ public class MyCode extends CodeV3 {
       keyPair = keyGen.generateKeyPair();
       X509Certificate cert = X509Utils.getInstance().generateCertificate(uiParams, keyPair);
       Certificate certs [] = {cert};
-      X509Utils.getInstance().getKeyStore().setKeyEntry(uiParams.getName(), keyPair.getPrivate().getEncoded(), certs);
+      
+      X509Utils.getInstance().getKeyStore().setKeyEntry(uiParams.getName(), keyPair.getPrivate(), X509Utils.getKeyStorePassword().toCharArray(), certs);
       X509Utils.getInstance().storeKeyStore();
     } catch (IOException ex) {
       Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
@@ -173,14 +179,57 @@ public class MyCode extends CodeV3 {
     return result;
   }
 
+  //String keypair_name, String file_name, String password
   @Override
   public boolean importKeypair(String string, String string1, String string2) {
-    return true;
+    boolean result = false;
+    
+    try {
+      KeyStore ks = KeyStore.getInstance("pkcs12");
+      InputStream readStream = new FileInputStream(string1);
+      ks.load(readStream, string2.toCharArray());
+      readStream.close();
+      X509Certificate cert = (X509Certificate) ks.getCertificate(string);
+      Key pKey = ks.getKey(string, string2.toCharArray());
+      if((cert!=null)&&(pKey!=null)) {
+        Certificate certs[] = {cert};
+        if(!X509Utils.getInstance().getKeyStore().containsAlias(string)) {
+          X509Utils.getInstance().getKeyStore().setKeyEntry(string, pKey, X509Utils.getKeyStorePassword().toCharArray(), certs);
+          X509Utils.getInstance().storeKeyStore();
+          result = true;
+        }
+      }
+    } catch (Exception ex) {
+      Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
+    }
+    
+    return result;
   }
 
+  //String keypair_name, String file_name, String password
   @Override
   public boolean exportKeypair(String string, String string1, String string2) {
-    return false;
+    boolean result = false;
+    
+    try {
+      ProtectionParameter pp = new KeyStore.PasswordProtection(X509Utils.getKeyStorePassword().toCharArray()); 
+      KeyStore ks = KeyStore.getInstance("pkcs12");
+      ks.load(null,null);
+      PrivateKeyEntry entry = (PrivateKeyEntry) X509Utils.getInstance().getKeyStore().getEntry(string, pp);
+      Certificate certs[] = {entry.getCertificateChain()[0]};
+      PrivateKey pKey = entry.getPrivateKey();
+      ks.setKeyEntry(string, pKey, string2.toCharArray(), certs);
+      OutputStream writeStream;
+    
+      writeStream = new FileOutputStream(string1+".p12");
+      ks.store(writeStream, string2.toCharArray());
+      writeStream.close();
+      
+    } catch (Exception ex) {
+      Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
+    }
+    
+    return result;
   }
 
   @Override
