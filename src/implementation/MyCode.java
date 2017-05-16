@@ -158,7 +158,18 @@ public class MyCode extends CodeV3 {
 
   @Override
   public boolean removeKeypair(String string) {
-    return true;
+    boolean result = false;
+    
+    try {
+      if(X509Utils.getInstance().getKeyStore().containsAlias(string)) {
+         X509Utils.getInstance().getKeyStore().deleteEntry(string);
+         result = true;
+      }
+    } catch (Exception ex) {
+      Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
+    }
+    
+    return result;
   }
 
   @Override
