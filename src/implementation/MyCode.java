@@ -163,6 +163,7 @@ public class MyCode extends CodeV3 {
     try {
       if(X509Utils.getInstance().getKeyStore().containsAlias(string)) {
          X509Utils.getInstance().getKeyStore().deleteEntry(string);
+         X509Utils.getInstance().storeKeyStore();
          result = true;
       }
     } catch (Exception ex) {

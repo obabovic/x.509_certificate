@@ -159,15 +159,15 @@ public class UIUtils {
     //basic constraint fields
 
     byte[] extVal = cert.getExtensionValue(Extension.basicConstraints.toString());
-    
     if (extVal != null) {
       Object obj = new ASN1InputStream(extVal).readObject();
       extVal = ((DEROctetString) obj).getOctets();
       obj = new ASN1InputStream(extVal).readObject();
       BasicConstraints basicConstraints = BasicConstraints.getInstance((ASN1Sequence) obj);
-      
       access.setCA(basicConstraints.isCA());
-      access.setPathLen(basicConstraints.getPathLenConstraint().toString());
+      if(basicConstraints.isCA()) {
+        access.setPathLen(basicConstraints.getPathLenConstraint().toString());
+      }
     }
     
     
