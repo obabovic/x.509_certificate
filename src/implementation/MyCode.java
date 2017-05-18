@@ -7,6 +7,7 @@ package implementation;
 import code.GuiException;
 import gui.KeyStorePanel;
 import gui.ToolbarPanel;
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -17,10 +18,14 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.Reader;
 import java.io.Writer;
 import java.math.BigInteger;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.GeneralSecurityException;
 import java.security.Key;
 import java.security.KeyPair;
@@ -57,10 +62,12 @@ import javax.naming.InvalidNameException;
 import javax.naming.ldap.LdapName;
 import javax.naming.ldap.Rdn;
 import model.UIParameters;
+import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1InputStream;
 import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.DEROctetString;
+import org.bouncycastle.asn1.DEROutputStream;
 import org.bouncycastle.asn1.x509.AuthorityKeyIdentifier;
 import org.bouncycastle.asn1.x509.BasicConstraints;
 import org.bouncycastle.asn1.x509.Extension;
@@ -285,9 +292,9 @@ public class MyCode extends CodeV3 {
     boolean result = false;
     
     try {
-      FileReader is = new FileReader(file);
-      PemReader reader = new PemReader(is);
-      ByteArrayInputStream bIn = new ByteArrayInputStream(reader.readPemObject().getContent());
+      Path fileLocation = Paths.get(file.getAbsolutePath());
+      byte[] data = Files.readAllBytes(fileLocation);
+      ByteArrayInputStream bIn = new ByteArrayInputStream(data);
       
       X509Certificate cert = (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(bIn);
       KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DSA");
@@ -309,13 +316,20 @@ public class MyCode extends CodeV3 {
     try {
       entry = (PrivateKeyEntry) X509Utils.getInstance().getKeyStore().getEntry(selectedKeyPair, pp);
       X509Certificate cert = (X509Certificate) entry.getCertificate();
-     
+      
+      File file2 = new File(file.getAbsolutePath()+".cer");
+      
       if(i==0) {
         //DER
+        FileOutputStream os = new FileOutputStream(file2);
+        DEROutputStream dos = new DEROutputStream(os);
+        ASN1InputStream aIn = new ASN1InputStream(new ByteArrayInputStream(cert.getEncoded()));
         
+        dos.writeObject(aIn.readObject());
+        dos.flush();
+        dos.close();
       } else {
         //PEM
-        File file2 = new File(file.getAbsolutePath()+".cer");
         Writer writer = new FileWriter(file2);
         PemWriter pem = new PemWriter(writer);
         PemObject pog = new PemObject(cert.getType(), cert.getEncoded());
