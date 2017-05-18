@@ -26,6 +26,8 @@ import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.logging.Level;
@@ -181,22 +183,22 @@ public class X509Utils {
 //        CN=i,OU=i,O=i,L=i,ST=i,C=i
 //        i = 1 ... 6
       switch(i) {
-        case 1:
+        case 6:
           CN = rdn.getValue().toString();
           break;
-        case 2:
+        case 5:
           OU = rdn.getValue().toString();
           break;
-        case 3:
+        case 4:
           O = rdn.getValue().toString();
           break;
-        case 4:
+        case 3:
           L = rdn.getValue().toString();
           break;
-        case 5:
+        case 2:
           ST = rdn.getValue().toString();
           break;
-        case 6:
+        case 1:
           C = rdn.getValue().toString();
           break;
       }
@@ -206,7 +208,22 @@ public class X509Utils {
     //String signatureAlgorithm, int subjectCertificateVersion, BigInteger serialNumber, Date notBefore, Date notAfter, String keyLength, //String publicKeyAlgorithm, boolean extensionKeyIdentifier, String[] extensionsubjectAlternativeNamextensionSubjectAlternativeNameIsCritical, boolean extensionBasicConstraintsIsCritical, //boolean extensionIsCertificateAuthority
     boolean subjectAndAuthorityExists = false;
     boolean isCriticalAltNames = false, isCriticalBasicConstraints = false;
-    String sANs [] = (subjectCert.getSubjectAlternativeNames()!=null)?(String[])subjectCert.getSubjectAlternativeNames().toArray():new String[0];
+    
+    Collection sANsCollection = impl.getSubjectAlternativeNames();
+    String sANs [];
+    if(sANsCollection != null) {
+      sANs = new String[sANsCollection.size()];
+      // each item of collection is a List, where List(0) - Integer that represents the type of alternative name and List(1) - the actual name
+      i=0;
+      for (Iterator iterator = sANsCollection.iterator(); iterator.hasNext();) {
+        List<Object> nameTypePair = (List<Object>) iterator.next();   
+        Integer typeOfAlternativeName = (Integer)nameTypePair.get(0);
+        String alternativeName = (String) nameTypePair.get(1);
+        sANs[i++] = alternativeName;
+      }
+    } else {
+      sANs = new String[0];
+    }
     byte sKIDb[] = impl.getExtensionValue(Extension.subjectKeyIdentifier.toString());
     
     //checks if key identifier exists

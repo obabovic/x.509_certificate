@@ -257,8 +257,10 @@ public class MyCode extends CodeV3 {
       PrivateKeyEntry subjectEntry = (PrivateKeyEntry) X509Utils.getInstance().getKeyStore().getEntry(selectedKeyPair, pp);
       
       X509Certificate cert = X509Utils.signCertificate(subjectEntry, issuerEntry);
+      Certificate [] chain = {cert};
+      
       X509Utils.getInstance().getKeyStore().deleteEntry(selectedKeyPair);
-      X509Utils.getInstance().getKeyStore().setCertificateEntry(selectedKeyPair, cert);
+      X509Utils.getInstance().getKeyStore().setKeyEntry(selectedKeyPair, subjectEntry.getPrivateKey(), X509Utils.getKeyStorePassword().toCharArray(), chain);
       X509Utils.getInstance().storeKeyStore();
       
       result = true;
@@ -281,7 +283,7 @@ public class MyCode extends CodeV3 {
 
   @Override
   public String getIssuer(String string) {
-    return "blabla";
+    return "C=IMG,ST=LA";
   }
 
   @Override

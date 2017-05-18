@@ -88,22 +88,22 @@ public class UIUtils {
 //        CN=i,OU=i,O=i,L=i,ST=i,C=i
 //        i = 1 ... 6
       switch(i) {
-        case 1:
+        case 6:
           access.setSubjectCommonName(rdn.getValue().toString());
           break;
-        case 2:
+        case 5:
           access.setSubjectOrganizationUnit(rdn.getValue().toString());
           break;
-        case 3:
+        case 4:
           access.setSubjectOrganization(rdn.getValue().toString());
           break;
-        case 4:
+        case 3:
           access.setSubjectLocality(rdn.getValue().toString());
           break;
-        case 5:
+        case 2:
           access.setSubjectState(rdn.getValue().toString());
           break;
-        case 6:
+        case 1:
           access.setSubjectCountry(rdn.getValue().toString());
           break;
       }
