@@ -7,14 +7,19 @@ package implementation;
 import code.GuiException;
 import gui.KeyStorePanel;
 import gui.ToolbarPanel;
+import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.Reader;
+import java.io.Writer;
 import java.math.BigInteger;
 import java.security.GeneralSecurityException;
 import java.security.Key;
@@ -64,6 +69,7 @@ import org.bouncycastle.asn1.x509.GeneralNames;
 import org.bouncycastle.asn1.x509.SubjectKeyIdentifier;
 import org.bouncycastle.asn1.x509.X509Extension;
 import org.bouncycastle.asn1.x509.X509Extensions;
+import org.bouncycastle.util.io.pem.PemWriter;
 import static org.bouncycastle.asn1.x509.X509Extensions.SubjectAlternativeName;
 import static org.bouncycastle.asn1.x509.X509Extensions.SubjectKeyIdentifier;
 import org.bouncycastle.jcajce.provider.asymmetric.x509.KeyFactory;
@@ -71,6 +77,9 @@ import org.bouncycastle.jce.PKCS10CertificationRequest;
 import org.bouncycastle.jce.X509KeyUsage;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.encoders.Base64;
+import org.bouncycastle.util.io.pem.PemObject;
+import org.bouncycastle.util.io.pem.PemObjectGenerator;
+import org.bouncycastle.util.io.pem.PemReader;
 import org.bouncycastle.x509.X509V3CertificateGenerator;
 import sun.security.pkcs.EncryptedPrivateKeyInfo;
 import sun.security.x509.AlgorithmId;
@@ -161,7 +170,7 @@ public class MyCode extends CodeV3 {
       keyGen = KeyPairGenerator.getInstance("DSA");
       keyGen.initialize(Integer.parseInt(uiParams.getKeyLength()));
       keyPair = keyGen.generateKeyPair();
-      X509Certificate cert = X509Utils.getInstance().generateCertificate(uiParams, keyPair.getPublic(), keyPair.getPrivate(), false, null);
+      X509Certificate cert = X509Utils.getInstance().generateCertificate(uiParams, keyPair.getPublic(), keyPair.getPrivate(), true, null);
       Certificate certs [] = {cert};
       
       X509Utils.getInstance().getKeyStore().setKeyEntry(uiParams.getName(), keyPair.getPrivate(), X509Utils.getKeyStorePassword().toCharArray(), certs);
@@ -273,12 +282,53 @@ public class MyCode extends CodeV3 {
 
   @Override
   public boolean importCertificate(File file, String string) {
-    return false;
+    boolean result = false;
+    
+    try {
+      FileReader is = new FileReader(file);
+      PemReader reader = new PemReader(is);
+      ByteArrayInputStream bIn = new ByteArrayInputStream(reader.readPemObject().getContent());
+      
+      X509Certificate cert = (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(bIn);
+      KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DSA");
+      X509Utils.getInstance().getKeyStore().setKeyEntry(string, keyGen.genKeyPair().getPrivate(), X509Utils.getKeyStorePassword().toCharArray(), new Certificate[]{cert});
+      result = true;
+    } catch (Exception ex) {
+      Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
+    }
+    
+    return result;
   }
 
+  //i=0->DER, i=1->PEM
   @Override
   public boolean exportCertificate(File file, int i) {
-    return false;
+    boolean result = false;
+    ProtectionParameter pp = new KeyStore.PasswordProtection(X509Utils.getKeyStorePassword().toCharArray());
+    PrivateKeyEntry entry;
+    try {
+      entry = (PrivateKeyEntry) X509Utils.getInstance().getKeyStore().getEntry(selectedKeyPair, pp);
+      X509Certificate cert = (X509Certificate) entry.getCertificate();
+     
+      if(i==0) {
+        //DER
+        
+      } else {
+        //PEM
+        File file2 = new File(file.getAbsolutePath()+".cer");
+        Writer writer = new FileWriter(file2);
+        PemWriter pem = new PemWriter(writer);
+        PemObject pog = new PemObject(cert.getType(), cert.getEncoded());
+        pem.writeObject(pog);
+        pem.flush();
+        pem.close();
+      }
+      result = true;
+    } catch (Exception ex) {
+      Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
+    }
+    
+    return result;
   }
 
   @Override
