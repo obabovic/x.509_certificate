@@ -161,7 +161,7 @@ public class MyCode extends CodeV3 {
       keyGen = KeyPairGenerator.getInstance("DSA");
       keyGen.initialize(Integer.parseInt(uiParams.getKeyLength()));
       keyPair = keyGen.generateKeyPair();
-      X509Certificate cert = X509Utils.getInstance().generateCertificate(uiParams, keyPair.getPublic(), keyPair.getPrivate());
+      X509Certificate cert = X509Utils.getInstance().generateCertificate(uiParams, keyPair.getPublic(), keyPair.getPrivate(), false, null);
       Certificate certs [] = {cert};
       
       X509Utils.getInstance().getKeyStore().setKeyEntry(uiParams.getName(), keyPair.getPrivate(), X509Utils.getKeyStorePassword().toCharArray(), certs);
@@ -283,7 +283,16 @@ public class MyCode extends CodeV3 {
 
   @Override
   public String getIssuer(String string) {
-    return "C=IMG,ST=LA";
+    String result = "";
+    ProtectionParameter pp = new KeyStore.PasswordProtection(X509Utils.getKeyStorePassword().toCharArray());
+    try {
+      PrivateKeyEntry entry = (PrivateKeyEntry) X509Utils.getInstance().getKeyStore().getEntry(string, pp);
+      X509Certificate cert = (X509Certificate) entry.getCertificate();
+      result = cert.getIssuerDN().toString();
+    } catch (Exception ex) {
+      Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
+    }
+    return result;
   }
 
   @Override

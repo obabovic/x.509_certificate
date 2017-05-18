@@ -103,13 +103,14 @@ public class X509Utils {
     }
   }
   
-  public X509Certificate generateCertificate(UIParameters uiParams, PublicKey pubKey, PrivateKey privKey) throws GeneralSecurityException, IOException, Exception {
+  //issuerDN is passed only if the certificate is not being self signed
+  public X509Certificate generateCertificate(UIParameters uiParams, PublicKey pubKey, PrivateKey privKey, boolean selfSigned, Principal issuerDN) throws GeneralSecurityException, IOException, Exception {
     X509Certificate result = null;
     X509V3CertificateGenerator certGen = new X509V3CertificateGenerator();
     X500Principal xp = new X500Principal(uiParams.getDn());
-            
+    
     certGen.setSerialNumber(uiParams.getSerialNumber());
-    certGen.setIssuerDN(xp);
+    certGen.setIssuerDN(selfSigned?xp:new X500Principal(issuerDN.toString()));
     certGen.setNotBefore(uiParams.getNotBefore());
     certGen.setNotAfter(uiParams.getNotAfter());
     certGen.setSubjectDN(xp);
@@ -253,7 +254,7 @@ public class X509Utils {
     //public UIParameters(String name, String country, String state, String locality, String organization, String organizationUnit, String commonName, String signatureAlgorithm, int subjectCertificateVersion, BigInteger serialNumber, Date notBefore, Date notAfter, String keyLength, String publicKeyAlgorithm, boolean extensionKeyIdentifier, String[] extensionsubjectAlternativeName, String extensionPathLength,boolean extensionKeyIdentifierIsCritical, boolean extensionSubjectAlternativeNameIsCritical, boolean extensionBasicConstraintsIsCritical, boolean extensionIsCertificateAuthority) {
     UIParameters ui = new UIParameters(impl.getName(), C, ST, L, O, OU, CN, impl.getSigAlgName(), impl.getVersion(), impl.getSerialNumber(), impl.getNotBefore(), impl.getNotAfter(), "512", impl.getPublicKey().getAlgorithm(), subjectAndAuthorityExists, sANs, (basicConstraints.isCA())?basicConstraints.getPathLenConstraint().toString():"0", false, isCriticalAltNames, isCriticalBasicConstraints, basicConstraints.isCA());
     
-    result = getInstance().generateCertificate(ui, subjectCert.getPublicKey(), issuerEntry.getPrivateKey());
+    result = getInstance().generateCertificate(ui, subjectCert.getPublicKey(), issuerEntry.getPrivateKey(), false, issuerCert.getSubjectDN());
     
     return result;
   }

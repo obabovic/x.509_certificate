@@ -187,8 +187,7 @@ public class UIUtils {
   public static void setIssuerFields(GuiV3 access, X509Certificate cert) throws Exception {
     Principal issuerDN = cert.getIssuerDN();
     
-
-    
+    access.setIssuer(issuerDN.toString());
     access.setIssuerSignatureAlgorithm(cert.getSigAlgName());
   }
 }
