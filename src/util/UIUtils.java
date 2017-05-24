@@ -174,13 +174,15 @@ public class UIUtils {
     //setting critical fields 0- key ids, 5-alt names, 8-basicConstraints
     Set<String> criticals = cert.getCriticalExtensionOIDs();
     
-    criticals.forEach((criticalElement) -> {
+    if(criticals != null) {
+      criticals.forEach((criticalElement) -> {
       if(criticalElement.compareTo(Extension.subjectAlternativeName.toString()) == 0) {
         access.setCritical(5, true);
       } else if (criticalElement.compareTo(Extension.basicConstraints.toString()) == 0) {
         access.setCritical(8, true);
       }
     });
+    }
     access.setCritical(0, false);
   }
   

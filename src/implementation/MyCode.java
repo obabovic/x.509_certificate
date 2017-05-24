@@ -68,6 +68,7 @@ import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.DEROutputStream;
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.asn1.x509.AuthorityKeyIdentifier;
 import org.bouncycastle.asn1.x509.BasicConstraints;
 import org.bouncycastle.asn1.x509.Extension;
@@ -83,6 +84,7 @@ import org.bouncycastle.jcajce.provider.asymmetric.x509.KeyFactory;
 import org.bouncycastle.jce.PKCS10CertificationRequest;
 import org.bouncycastle.jce.X509KeyUsage;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.operator.DefaultSignatureAlgorithmIdentifierFinder;
 import org.bouncycastle.util.encoders.Base64;
 import org.bouncycastle.util.io.pem.PemObject;
 import org.bouncycastle.util.io.pem.PemObjectGenerator;
@@ -112,7 +114,8 @@ public class MyCode extends CodeV3 {
   private KeyPairGenerator keyGen;
   private KeyPair keyPair;
   private String selectedKeyPair = null;
-  
+  private PKCS10CertificationRequest currentCSR = null;
+          
   public MyCode(boolean[] algorithm_conf, boolean[] extensions_conf) throws GuiException {
     super(algorithm_conf, extensions_conf);
   }
@@ -272,7 +275,8 @@ public class MyCode extends CodeV3 {
       PrivateKeyEntry issuerEntry = (PrivateKeyEntry) X509Utils.getInstance().getKeyStore().getEntry(string, pp);
       PrivateKeyEntry subjectEntry = (PrivateKeyEntry) X509Utils.getInstance().getKeyStore().getEntry(selectedKeyPair, pp);
       
-      X509Certificate cert = X509Utils.signCertificate(subjectEntry, issuerEntry);
+      X509Certificate cert = X509Utils.sign(currentCSR, subjectEntry, issuerEntry);
+      
       Certificate [] chain = {cert};
       
       X509Utils.getInstance().getKeyStore().deleteEntry(selectedKeyPair);
@@ -352,7 +356,7 @@ public class MyCode extends CodeV3 {
     try {
       PrivateKeyEntry entry = (PrivateKeyEntry) X509Utils.getInstance().getKeyStore().getEntry(string, pp);
       X509Certificate cert = (X509Certificate) entry.getCertificate();
-      result = cert.getIssuerDN().toString();
+      result = cert.getSubjectDN().toString();
     } catch (Exception ex) {
       Logger.getLogger(MyCode.class.getName()).log(Level.SEVERE, null, ex);
     }
@@ -410,10 +414,14 @@ public class MyCode extends CodeV3 {
         ProtectionParameter pp = new PasswordProtection(X509Utils.getKeyStorePassword().toCharArray());
         PrivateKeyEntry entry = (PrivateKeyEntry) X509Utils.getInstance().getKeyStore().getEntry(string, pp);
         X509Certificate cert = (X509Certificate) entry.getCertificate();
+        String sigAlgName = (cert.getSigAlgName().compareTo("DSA")==0)?"SHA1withDSA":cert.getSigAlgName();
         PrivateKey pKey = entry.getPrivateKey();
-        PKCS10CertificationRequest pkcs10Request = new PKCS10CertificationRequest("SHA1withDSA",cert.getSubjectX500Principal(),cert.getPublicKey(), null, pKey);
+        PKCS10CertificationRequest pkcs10Request = new PKCS10CertificationRequest(sigAlgName,cert.getSubjectX500Principal(),cert.getPublicKey(), null, pKey);
         
-        String base64PKCS10 = new String(Base64.encode(pkcs10Request.getEncoded()));
+        currentCSR = pkcs10Request;
+//        String base64PKCS10 = new String(Base64.encode(pkcs10Request.getEncoded()));
+        
+
         result = true;
       }
     } catch (Exception ex) {

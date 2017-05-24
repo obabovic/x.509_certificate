@@ -6,6 +6,7 @@
 package util;
 
 import implementation.MyCode;
+import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -13,6 +14,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.security.GeneralSecurityException;
+import java.security.InvalidKeyException;
 import java.security.KeyPair;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
@@ -22,11 +24,14 @@ import java.security.Principal;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.Security;
+import java.security.SignatureException;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
@@ -40,16 +45,32 @@ import model.UIParameters;
 import org.bouncycastle.asn1.ASN1InputStream;
 import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.DEROctetString;
+import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
 import org.bouncycastle.asn1.x509.AuthorityKeyIdentifier;
 import org.bouncycastle.asn1.x509.BasicConstraints;
+import org.bouncycastle.asn1.x509.Certificate;
 import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.GeneralNames;
 import org.bouncycastle.asn1.x509.SubjectKeyIdentifier;
+import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
+import org.bouncycastle.asn1.x509.X509CertificateStructure;
 import org.bouncycastle.asn1.x509.X509Extensions;
 import static org.bouncycastle.asn1.x509.X509Extensions.SubjectKeyIdentifier;
+import org.bouncycastle.cert.X509CertificateHolder;
+import org.bouncycastle.cert.X509v3CertificateBuilder;
+import org.bouncycastle.crypto.params.AsymmetricKeyParameter;
+import org.bouncycastle.crypto.util.PrivateKeyFactory;
+import org.bouncycastle.jce.PKCS10CertificationRequest;
 import org.bouncycastle.jce.X509KeyUsage;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.operator.ContentSigner;
+import org.bouncycastle.operator.DefaultDigestAlgorithmIdentifierFinder;
+import org.bouncycastle.operator.DefaultSignatureAlgorithmIdentifierFinder;
+import org.bouncycastle.operator.bc.BcDSAContentSignerBuilder;
+import org.bouncycastle.operator.bc.BcECContentSignerBuilder;
+import org.bouncycastle.operator.bc.BcRSAContentSignerBuilder;
 import org.bouncycastle.x509.X509V3CertificateGenerator;
 import sun.security.x509.X509CertImpl;
 
@@ -115,12 +136,10 @@ public class X509Utils {
     certGen.setNotAfter(uiParams.getNotAfter());
     certGen.setSubjectDN(xp);
     certGen.setPublicKey(pubKey);
-    certGen.setSignatureAlgorithm(uiParams.getSignatureAlgorithm());
-    
+//    AlgorithmIdentifier sigAlgId = new DefaultSignatureAlgorithmIdentifierFinder().find();
     //adding extensions
     //key ids
     if(uiParams.isExtensionKeyIdentifier()) {
-      
       //converting a string into valid format for authorityKeyIdentifier
       List<GeneralName> names = new ArrayList();
       GeneralName altName = new GeneralName(GeneralName.dNSName, uiParams.getCommonName());
@@ -132,7 +151,7 @@ public class X509Utils {
       SubjectKeyIdentifier sKID = new SubjectKeyIdentifier(pubKey.getEncoded());
       AuthorityKeyIdentifier aKID = new AuthorityKeyIdentifier(authorityName, uiParams.getSerialNumber());
       
-      //sKID and aKID must not be critical, from documentation
+      //sKID and aKID must not be critical, fro mdocumentation
       certGen.addExtension(Extension.subjectKeyIdentifier, false, sKID);
       certGen.addExtension(Extension.authorityKeyIdentifier, false, aKID);
     }
@@ -165,75 +184,48 @@ public class X509Utils {
     
     certGen.addExtension(X509Extensions.BasicConstraints, uiParams.isExtensionBasicConstraintsIsCritical(), basicConstraint);
     
-    
+    certGen.setSignatureAlgorithm(uiParams.getSignatureAlgorithm());
     result = certGen.generateX509Certificate(privKey, "BC");
     return result;
   }
   
-  public static X509Certificate signCertificate(KeyStore.PrivateKeyEntry subjectEntry, KeyStore.PrivateKeyEntry issuerEntry) throws Exception {
-    X509Certificate result = null;
-    X509Certificate subjectCert = (X509Certificate) subjectEntry.getCertificate();
+  public static X509Certificate sign(PKCS10CertificationRequest inputCSR, KeyStore.PrivateKeyEntry subjectEntry, KeyStore.PrivateKeyEntry issuerEntry)
+        throws InvalidKeyException, NoSuchAlgorithmException,
+        NoSuchProviderException, SignatureException, IOException,CertificateException, Exception {   
+    PrivateKey caPrivate = issuerEntry.getPrivateKey();
+    KeyPair pair = new KeyPair(subjectEntry.getCertificate().getPublicKey(), subjectEntry.getPrivateKey());
     X509Certificate issuerCert = (X509Certificate) issuerEntry.getCertificate();
-    X509CertImpl impl = new X509CertImpl(subjectCert.getEncoded());
-    String CN="", OU="", O="", L="", ST="", C="";
+    X509Certificate subjectCert = (X509Certificate) subjectEntry.getCertificate();
+    String issuerSigAlgName = (issuerCert.getPublicKey().getAlgorithm().compareTo("DSA")==0)?"SHA1withDSA":issuerCert.getSigAlgName();
+    AlgorithmIdentifier sigAlgId = new DefaultSignatureAlgorithmIdentifierFinder().find(issuerSigAlgName);
+    AlgorithmIdentifier digAlgId = new DefaultDigestAlgorithmIdentifierFinder().find(sigAlgId);
+
+    AsymmetricKeyParameter foo = PrivateKeyFactory.createKey(caPrivate.getEncoded());
+    SubjectPublicKeyInfo keyInfo = SubjectPublicKeyInfo.getInstance(pair.getPublic().getEncoded());
     
-    Principal subjectDN = subjectCert.getSubjectDN();
-    LdapName ln = new LdapName(subjectDN.toString());
-    int i = 1; // used for mapping DN attributes to fields
-    for(Rdn rdn : ln.getRdns()) {
-//        CN=i,OU=i,O=i,L=i,ST=i,C=i
-//        i = 1 ... 6
-      switch(i) {
-        case 6:
-          CN = rdn.getValue().toString();
-          break;
-        case 5:
-          OU = rdn.getValue().toString();
-          break;
-        case 4:
-          O = rdn.getValue().toString();
-          break;
-        case 3:
-          L = rdn.getValue().toString();
-          break;
-        case 2:
-          ST = rdn.getValue().toString();
-          break;
-        case 1:
-          C = rdn.getValue().toString();
-          break;
-      }
-      i++;
-    }
-    //String name, String country, String state, String locality, String organization, String organizationUnit, String commonName, 
-    //String signatureAlgorithm, int subjectCertificateVersion, BigInteger serialNumber, Date notBefore, Date notAfter, String keyLength, //String publicKeyAlgorithm, boolean extensionKeyIdentifier, String[] extensionsubjectAlternativeNamextensionSubjectAlternativeNameIsCritical, boolean extensionBasicConstraintsIsCritical, //boolean extensionIsCertificateAuthority
+    //in newer version of BC such as 1.51, this is 
+    PKCS10CertificationRequest pk10Holder = inputCSR;
+    
+    X509v3CertificateBuilder certGen = new X509v3CertificateBuilder(new X500Name(issuerCert.getSubjectDN().toString()), subjectCert.getSerialNumber(), subjectCert.getNotBefore(), subjectCert.getNotAfter(), pk10Holder.getCertificationRequestInfo().getSubject(), keyInfo);
+    
+    ContentSigner sigGen = null;
+    String alg = issuerCert.getPublicKey().getAlgorithm();
+    if((alg.contains("RSA"))||(alg.compareTo("RSA") == 0))
+      sigGen = new BcRSAContentSignerBuilder(sigAlgId, digAlgId).build(foo);
+    else if((alg.contains("DSA"))||(alg.compareTo("DSA") == 0)) 
+      sigGen = new BcDSAContentSignerBuilder(sigAlgId, digAlgId).build(foo);
+    else if((alg.contains("EC"))||(alg.compareTo("EC") == 0)) 
+      sigGen = new BcECContentSignerBuilder(sigAlgId, digAlgId).build(foo);
+    else throw new Exception("Invalid algorithm.");
+    
+    
     boolean subjectAndAuthorityExists = false;
     boolean isCriticalAltNames = false, isCriticalBasicConstraints = false;
     
-    Collection sANsCollection = impl.getSubjectAlternativeNames();
-    String sANs [];
-    if(sANsCollection != null) {
-      sANs = new String[sANsCollection.size()];
-      // each item of collection is a List, where List(0) - Integer that represents the type of alternative name and List(1) - the actual name
-      i=0;
-      for (Iterator iterator = sANsCollection.iterator(); iterator.hasNext();) {
-        List<Object> nameTypePair = (List<Object>) iterator.next();   
-        Integer typeOfAlternativeName = (Integer)nameTypePair.get(0);
-        String alternativeName = (String) nameTypePair.get(1);
-        sANs[i++] = alternativeName;
-      }
-    } else {
-      sANs = new String[0];
-    }
-    byte sKIDb[] = impl.getExtensionValue(Extension.subjectKeyIdentifier.toString());
     
-    //checks if key identifier exists
-    if(sKIDb != null) {
-      subjectAndAuthorityExists = true;
-    }
     
     //checks what's critical
-    Set<String> criticals = impl.getCriticalExtensionOIDs();
+    Set<String> criticals = subjectCert.getCriticalExtensionOIDs();
     for(String item: criticals){
       if(item.compareTo(Extension.subjectAlternativeName.toString()) == 0) {
         isCriticalAltNames = true;
@@ -242,22 +234,87 @@ public class X509Utils {
       }
     }
     
-    //gets the certs basic constraint
+    //set key identifier
+    //converting a string into valid format for authorityKeyIdentifier
+    LdapName ln = new LdapName(subjectCert.getSubjectDN().toString());
+    String CN = null;
+    
+    int i = 1; // used for mapping DN attributes to fields
+    for(Rdn rdn : ln.getRdns()) {
+        if(rdn.getType().compareTo("CN") == 0)
+          CN = (String) rdn.getValue();
+    }
+    List<GeneralName> names = new ArrayList();
+    GeneralName altName = new GeneralName(GeneralName.dNSName, CN.toString());
+    names.add(altName);
+    GeneralName [] listToArray = new GeneralName[names.size()];
+    names.toArray(listToArray);
+    GeneralNames authorityName = new GeneralNames(listToArray);
+
+    SubjectKeyIdentifier sKID = new SubjectKeyIdentifier(pair.getPublic().getEncoded());
+    AuthorityKeyIdentifier aKID = new AuthorityKeyIdentifier(authorityName, subjectCert.getSerialNumber());
+
+    //sKID and aKID must not be critical, from documentation
+    certGen.addExtension(Extension.subjectKeyIdentifier, false, sKID);
+    certGen.addExtension(Extension.authorityKeyIdentifier, false, aKID);
+    
+    
+    //set sub alt names
+    i=0;
+    Collection sANsCollection = subjectCert.getSubjectAlternativeNames();
+    names = new ArrayList();
+    
+    if(sANsCollection != null) {
+      for (Iterator iterator = sANsCollection.iterator(); iterator.hasNext();) {
+        List<Object> nameTypePair = (List<Object>) iterator.next();   
+        Integer typeOfAlternativeName = (Integer)nameTypePair.get(0);
+        String alternativeName = (String) nameTypePair.get(1);
+
+        altName = new GeneralName(GeneralName.dNSName, alternativeName);
+        names.add(altName);
+      }
+      listToArray = new GeneralName[names.size()];
+      names.toArray(listToArray);
+      GeneralNames subjectAltName = new GeneralNames(listToArray);
+      certGen.addExtension(Extension.subjectAlternativeName, isCriticalAltNames, subjectAltName); 
+    }
+    
+    
+    
+    
+    byte sKIDb[] = subjectCert.getExtensionValue(Extension.subjectKeyIdentifier.toString());
+    
+    //checks if key identifier exists
+    if(sKIDb != null) {
+      subjectAndAuthorityExists = true;
+    }
+    
+    //set the certs basic constraint
     BasicConstraints basicConstraints = null;
-    byte[] extVal = impl.getExtensionValue(Extension.basicConstraints.toString());
+    byte[] extVal = subjectCert.getExtensionValue(Extension.basicConstraints.toString());
     
     Object obj = new ASN1InputStream(extVal).readObject();
     extVal = ((DEROctetString) obj).getOctets();
     obj = new ASN1InputStream(extVal).readObject();
     basicConstraints = BasicConstraints.getInstance((ASN1Sequence) obj);
-   
-    //public UIParameters(String name, String country, String state, String locality, String organization, String organizationUnit, String commonName, String signatureAlgorithm, int subjectCertificateVersion, BigInteger serialNumber, Date notBefore, Date notAfter, String keyLength, String publicKeyAlgorithm, boolean extensionKeyIdentifier, String[] extensionsubjectAlternativeName, String extensionPathLength,boolean extensionKeyIdentifierIsCritical, boolean extensionSubjectAlternativeNameIsCritical, boolean extensionBasicConstraintsIsCritical, boolean extensionIsCertificateAuthority) {
-    UIParameters ui = new UIParameters(impl.getName(), C, ST, L, O, OU, CN, impl.getSigAlgName(), impl.getVersion(), impl.getSerialNumber(), impl.getNotBefore(), impl.getNotAfter(), "512", impl.getPublicKey().getAlgorithm(), subjectAndAuthorityExists, sANs, (basicConstraints.isCA())?basicConstraints.getPathLenConstraint().toString():"0", false, isCriticalAltNames, isCriticalBasicConstraints, basicConstraints.isCA());
     
-    result = getInstance().generateCertificate(ui, subjectCert.getPublicKey(), issuerEntry.getPrivateKey(), false, issuerCert.getSubjectDN());
+    certGen.addExtension(Extension.basicConstraints, isCriticalBasicConstraints, basicConstraints.getEncoded());
     
-    return result;
-  }
+    
+    
+    
+    X509CertificateHolder holder = certGen.build(sigGen);
+    Certificate eeX509CertificateStructure = holder.toASN1Structure(); 
+
+    CertificateFactory cf = CertificateFactory.getInstance("X.509", "BC");
+    
+    // Read Certificate
+    InputStream is1 = new ByteArrayInputStream(eeX509CertificateStructure.getEncoded());
+    X509Certificate theCert = (X509Certificate) cf.generateCertificate(is1);
+    is1.close();
+    return theCert;
+    //return null;
+}
 
   public static X509Utils getInstance() throws Exception {
     if(instance == null)
