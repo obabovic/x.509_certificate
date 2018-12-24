@@ -4,6 +4,12 @@
  * and open the template in the editor.
  */
 package main;
+import code.GuiException;
+import code.X509;
+import implementation.MyCode;
+import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  *
@@ -11,6 +17,6 @@ package main;
  */
 public class Main {
   public static void main(String [] args) {
-    System.out.println("Hello World!");
+    X509.main(args);
   }
 }
